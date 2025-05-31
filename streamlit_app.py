@@ -1,9 +1,5 @@
 import streamlit as st
-import openai
 import pandas as pd
-from datetime import datetime
-import calendar
-import re
 from utils.supabase_conn import SupaBase
 from utils.openai import generate_social_posts, article_to_posts, refine_post
 
