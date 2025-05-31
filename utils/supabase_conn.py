@@ -1,7 +1,7 @@
 from supabase import create_client, Client
 from supabase.client import ClientOptions
 from dotenv import load_dotenv
-import os
+import streamlit as st
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -13,8 +13,8 @@ class SupaBase:
         """
         Initialize the Supabase client options.
         """
-        url = os.environ.get("DATABASE_URL")
-        key = os.environ.get("SUPABASE_SECRET")
+        url = st.secrets["DATABASE_URL"]#os.environ.get("DATABASE_URL")
+        key = st.secrets["SUPABASE_SECRET"]#os.environ.get("SUPABASE_SECRET")
         self.supabase = create_client(url, key)
 
     def get_brands(self) -> List[Dict]:
