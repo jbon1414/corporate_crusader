@@ -17,11 +17,11 @@ if 'brands' not in st.session_state:
 if 'supabase_client' not in st.session_state:
     st.session_state.supabase_client = None
 
-Initialize Supabase connection
+#Initialize Supabase connection
 try:
     if not st.session_state.supabase_client:
         st.session_state.supabase_client = SupaBase()
-        # st.sidebar.success("✅ Connected to Supabase")
+        #st.sidebar.success("✅ Connected to Supabase")
 except Exception as e:
     st.sidebar.error(f"❌ Supabase connection failed: {str(e)}")
     st.sidebar.warning("Make sure your .env file contains DATABASE_URL and SUPABASE_API")
