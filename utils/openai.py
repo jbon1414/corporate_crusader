@@ -28,7 +28,7 @@ def generate_social_posts(brand_data, focus, posts_per_month,
         
         # Create a tailored prompt using brand data
         system_prompt = f"""You are an expert social media copywriter specializing in creating engaging content.
-        Generate {num_posts} unique LinkedIn posts for {brand_data['name']} for {current_month} {current_year}.
+        Generate exactly {num_posts} unique LinkedIn posts for {brand_data['name']} for {current_month} {current_year}.
         
         Brand voice: {brand_data['brand_voice']}
         How they portray themselves: {brand_data['portrayal']}
@@ -41,55 +41,150 @@ def generate_social_posts(brand_data, focus, posts_per_month,
         Only schedule posts on weekdays. Create posts that are different from these examples:
         {brand_data['previous_posts']}
         
-        For each post, also suggest a graphic concept that would complement the post.
+        IMPORTANT: Format each post EXACTLY as shown below. Use this exact format for ALL {num_posts} posts:
 
-        Format each post as:
-        
-        POST #X - [Date]:
-        [LinkedIn post copy]
-        
+        POST #1 - [Weekday, Month Day, Year]:
+        [LinkedIn post content here]
+
         GRAPHIC:
         [Brief description of graphic concept]
+
+        POST #2 - [Weekday, Month Day, Year]:
+        [LinkedIn post content here]
+
+        GRAPHIC:
+        [Brief description of graphic concept]
+
+        Continue this pattern for all {num_posts} posts. Make sure each post is clearly separated and numbered consecutively.
         """
         
         response = openai.chat.completions.create(
             model="gpt-4-turbo",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Generate {num_posts} LinkedIn posts for {brand_data['name']} focusing on {focus}."}
+                {"role": "user", "content": f"Generate exactly {num_posts} LinkedIn posts for {brand_data['name']} focusing on {focus}. Use the exact format specified in the system prompt."}
             ],
             temperature=0.7,
-            max_tokens=2000
+            max_tokens=3000  # Increased token limit for more posts
         )
         
         # Extract the content from the response
         content = response.choices[0].message.content
         
-        # Parse the generated posts
+        # Debug: Print the raw content to help troubleshoot
+        st.write("**Debug - Raw AI Response:**")
+        st.text(content[:500] + "..." if len(content) > 500 else content)
+        
+        # Parse the generated posts with improved regex
         posts = []
-        pattern = r'POST #(\d+) - (.*?):\n(.*?)(?:\n\nGRAPHIC:\n(.*?))?(?=\n\nPOST #|\Z)'
-        matches = re.finditer(pattern, content, re.DOTALL)
         
-        for match in matches:
-            post_num = match.group(1)
-            post_date = match.group(2)
-            post_content = match.group(3).strip()
-            graphic_desc = match.group(4).strip() if match.group(4) else "No graphic suggestion provided."
+        # Split by POST # to handle formatting variations
+        post_sections = re.split(r'\n*POST #(\d+)', content)[1:]  # Skip first empty element
+        
+        for i in range(0, len(post_sections), 2):
+            if i + 1 < len(post_sections):
+                post_num = post_sections[i].strip()
+                post_content = post_sections[i + 1].strip()
+                
+                # Extract date and content
+                lines = post_content.split('\n')
+                
+                # Find the date line (should contain " - " after POST #)
+                date_line = ""
+                content_start = 0
+                
+                for idx, line in enumerate(lines):
+                    if ' - ' in line and any(month in line for month in calendar.month_name[1:]):
+                        date_line = line.split(' - ', 1)[1] if ' - ' in line else line
+                        content_start = idx + 1
+                        break
+                    elif line.strip() and not line.startswith('POST #'):
+                        # If no clear date found, use first non-empty line as date
+                        date_line = line.strip()
+                        content_start = idx + 1
+                        break
+                
+                # Extract post content and graphic
+                remaining_content = '\n'.join(lines[content_start:])
+                
+                # Split by GRAPHIC: to separate post content from graphic description
+                parts = re.split(r'\n\s*GRAPHIC:\s*\n?', remaining_content, flags=re.IGNORECASE)
+                
+                post_text = parts[0].strip()
+                graphic_desc = parts[1].strip() if len(parts) > 1 else "No graphic suggestion provided."
+                
+                # Clean up any remaining POST # references in the content
+                post_text = re.sub(r'^POST #\d+.*?\n', '', post_text, flags=re.MULTILINE).strip()
+                
+                posts.append({
+                    "number": post_num,
+                    "date": date_line,
+                    "content": post_text,
+                    "graphic": graphic_desc,
+                    "selected": True,
+                    "feedback": ""
+                })
+        
+        # If parsing failed, try alternative method
+        if len(posts) == 0:
+            st.warning("Primary parsing failed, trying alternative method...")
             
-            posts.append({
-                "number": post_num,
-                "date": post_date,
-                "content": post_content,
-                "graphic": graphic_desc,
-                "selected": True,
-                "feedback": ""
-            })
+            # Alternative parsing: split by double newlines and look for patterns
+            sections = content.split('\n\n')
+            current_post = {}
+            
+            for section in sections:
+                section = section.strip()
+                if not section:
+                    continue
+                    
+                # Check if this is a post header
+                post_match = re.match(r'POST #(\d+)\s*-\s*(.*?):', section)
+                if post_match:
+                    # Save previous post if exists
+                    if current_post and 'content' in current_post:
+                        posts.append({
+                            "number": current_post.get('number', str(len(posts) + 1)),
+                            "date": current_post.get('date', ''),
+                            "content": current_post.get('content', ''),
+                            "graphic": current_post.get('graphic', 'No graphic suggestion provided.'),
+                            "selected": True,
+                            "feedback": ""
+                        })
+                    
+                    # Start new post
+                    current_post = {
+                        'number': post_match.group(1),
+                        'date': post_match.group(2),
+                        'content': '',
+                        'graphic': ''
+                    }
+                elif section.upper().startswith('GRAPHIC:'):
+                    current_post['graphic'] = section[8:].strip()
+                elif 'content' in current_post:
+                    if current_post['content']:
+                        current_post['content'] += '\n\n' + section
+                    else:
+                        current_post['content'] = section
+            
+            # Don't forget the last post
+            if current_post and 'content' in current_post:
+                posts.append({
+                    "number": current_post.get('number', str(len(posts) + 1)),
+                    "date": current_post.get('date', ''),
+                    "content": current_post.get('content', ''),
+                    "graphic": current_post.get('graphic', 'No graphic suggestion provided.'),
+                    "selected": True,
+                    "feedback": ""
+                })
         
+        st.success(f"Successfully parsed {len(posts)} posts out of expected {num_posts}")
         return posts
+        
     except Exception as e:
         st.error(f"Error generating posts: {str(e)}")
         return []
-    
+
 
 def refine_post(post, feedback, api_key):
     """Refine a single post based on feedback."""
@@ -99,7 +194,14 @@ def refine_post(post, feedback, api_key):
         system_prompt = """You are an expert social media copywriter. 
         Revise the provided LinkedIn post according to the feedback.
         Maintain the same general message but adjust the tone, style, or focus based on the feedback.
-        Return only the revised post and graphic suggestion without any additional explanations."""
+        
+        Return the response in this exact format:
+        
+        [Revised post content]
+        
+        GRAPHIC:
+        [Revised graphic concept]
+        """
         
         user_prompt = f"""Original post:
         {post['content']}
@@ -107,9 +209,7 @@ def refine_post(post, feedback, api_key):
         Original graphic concept:
         {post['graphic']}
         
-        Feedback: Make this more {feedback}
-        
-        Provide the revised post followed by the revised graphic concept, separated by two line breaks."""
+        Feedback: Make this more {feedback}"""
         
         response = openai.chat.completions.create(
             model="gpt-4-turbo",
@@ -123,13 +223,15 @@ def refine_post(post, feedback, api_key):
         
         # Parse the response
         revised_text = response.choices[0].message.content
-        parts = revised_text.split("\n\n", 1)
+        
+        # Split by GRAPHIC: to separate post content from graphic description
+        parts = re.split(r'\n\s*GRAPHIC:\s*\n?', revised_text, flags=re.IGNORECASE)
         
         if len(parts) >= 2:
             revised_post = parts[0].strip()
             revised_graphic = parts[1].strip()
         else:
-            revised_post = revised_text
+            revised_post = revised_text.strip()
             revised_graphic = post['graphic']
         
         return {
@@ -218,3 +320,4 @@ def article_to_posts(article_text, num_posts, brand_data, api_key):
     except Exception as e:
         st.error(f"Error generating posts from article: {str(e)}")
         return []
+
