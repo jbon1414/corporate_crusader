@@ -39,7 +39,7 @@ def generate_social_posts(brand_data, focus, posts_per_month,
         Website: {brand_data.get('website', 'N/A')}
         
         Only schedule posts on weekdays. Create posts that are different from these examples:
-        {brand_data['previous_posts_examples']}
+        {brand_data['previous_posts']}
         
         For each post, also suggest a graphic concept that would complement the post.
 
