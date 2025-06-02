@@ -71,9 +71,9 @@ def generate_social_posts(brand_data, focus, posts_per_month,
         # Extract the content from the response
         content = response.choices[0].message.content
         
-        # Debug: Print the raw content to help troubleshoot
-        st.write("**Debug - Raw AI Response:**")
-        st.text(content[:500] + "..." if len(content) > 500 else content)
+        # # Debug: Print the raw content to help troubleshoot
+        # st.write("**Debug - Raw AI Response:**")
+        # st.text(content[:500] + "..." if len(content) > 500 else content)
         
         # Parse the generated posts with improved regex
         posts = []
