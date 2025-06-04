@@ -53,6 +53,7 @@ def generate_social_posts(brand_data, focus, posts_per_month,
         [LinkedIn post content here]
 
         GRAPHIC:
+        For each post, also suggest a graphic concept that would complement the post. Graphic can contain imagery relating directly to the brand like a location exterior/interior, products, employees or owners. If the graphic contains text it should relate directly back to the post copy without being the exact same, be concise and eye-catching.
         [Brief description of graphic concept]
 
         Continue this pattern for all {num_posts} posts. Make sure each post is clearly separated and numbered consecutively.
