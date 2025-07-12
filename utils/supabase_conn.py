@@ -98,6 +98,49 @@ class SupaBase:
             print(f"Error deleting brand {brand_id}: {str(e)}")
             return False
 
+    def save_posts(self, brand_id: str, post: str, user_id: str, graphic_concept: str, type: str, date: Optional[str] = None) -> Optional[Dict]:
+        """
+        Save a post to the 'posts' table.
+        Args:
+            brand_id: UUID string of the brand
+            post: Text/content of the post
+            user_id: UUID string of the user
+            graphic_concept: Description or identifier for the graphic concept
+            type: Type of the post
+            date: Optional ISO date string; if not provided, uses current datetime
+        Returns:
+            Created post dictionary or None if failed
+        """
+        try:
+            post_data = {
+                "brand_id": brand_id,
+                "user_id": user_id,
+                "post": post,
+                "graphic_concept": graphic_concept,
+                "type": type,
+                "date": date 
+            }
+            response = self.supabase.table("posts").insert(post_data).execute()
+            return response.data[0] if response.data else None
+        except Exception as e:
+            print(f"Error saving post for brand {brand_id}: {str(e)}")
+            return None
+
+    def get_posts_by_brand(self, brand_id: str) -> List[Dict]:
+        """
+        Fetch all posts for a specific brand from the 'posts' table.
+        Args:
+            brand_id: UUID string of the brand
+        Returns:
+            List of post dictionaries
+        """
+        try:
+            response = self.supabase.table("posts").select("*").eq("brand_id", brand_id).execute()
+            return response.data
+        except Exception as e:
+            print(f"Error fetching posts for brand {brand_id}: {str(e)}")
+            return []
+
 #test 
 SupaBaseClient = SupaBase()
 print(SupaBaseClient.get_brands())
