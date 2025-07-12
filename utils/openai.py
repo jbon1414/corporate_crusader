@@ -47,14 +47,13 @@ def generate_social_posts(brand_data, focus, posts_per_month,
         [LinkedIn post content here]
 
         GRAPHIC:
-        [Brief description of graphic concept]
+        [Brief description of graphic concept and remember that images may be limited, it may have to be a simple graphic or text-based image]
 
         POST #2 - [Weekday, Month Day, Year]:
         [LinkedIn post content here]
 
         GRAPHIC:
-        For each post, also suggest a graphic concept that would complement the post. Graphic can contain imagery relating directly to the brand like a location exterior/interior, products, employees or owners. If the graphic contains text it should relate directly back to the post copy without being the exact same, be concise and eye-catching.
-        [Brief description of graphic concept]
+        [Brief description of graphic concept and remember that images may be limited, it may have to be a simple graphic or text-based image]
 
         Continue this pattern for all {num_posts} posts. Make sure each post is clearly separated and numbered consecutively.
         """
@@ -72,7 +71,7 @@ def generate_social_posts(brand_data, focus, posts_per_month,
         # Extract the content from the response
         content = response.choices[0].message.content
         
-        # # Debug: Print the raw content to help troubleshoot
+        # Debug: Print the raw content to help troubleshoot
         # st.write("**Debug - Raw AI Response:**")
         # st.text(content[:500] + "..." if len(content) > 500 else content)
         
@@ -123,7 +122,9 @@ def generate_social_posts(brand_data, focus, posts_per_month,
                     "content": post_text,
                     "graphic": graphic_desc,
                     "selected": True,
-                    "feedback": ""
+                    "feedback": "",
+                    "post_feedback": "",
+                    "graphic_feedback": ""
                 })
         
         # If parsing failed, try alternative method
@@ -150,7 +151,9 @@ def generate_social_posts(brand_data, focus, posts_per_month,
                             "content": current_post.get('content', ''),
                             "graphic": current_post.get('graphic', 'No graphic suggestion provided.'),
                             "selected": True,
-                            "feedback": ""
+                            "feedback": "",
+                            "post_feedback": "",
+                            "graphic_feedback": ""
                         })
                     
                     # Start new post
@@ -176,7 +179,9 @@ def generate_social_posts(brand_data, focus, posts_per_month,
                     "content": current_post.get('content', ''),
                     "graphic": current_post.get('graphic', 'No graphic suggestion provided.'),
                     "selected": True,
-                    "feedback": ""
+                    "feedback": "",
+                    "post_feedback": "",
+                    "graphic_feedback": ""
                 })
         
         st.success(f"Successfully parsed {len(posts)} posts out of expected {num_posts}")
@@ -241,15 +246,60 @@ def refine_post(post, feedback, api_key):
             "content": revised_post,
             "graphic": revised_graphic,
             "selected": post['selected'],
-            "feedback": ""
+            "feedback": "",
+            "post_feedback": "",
+            "graphic_feedback": ""
         }
         
     except Exception as e:
         st.error(f"Error refining post: {str(e)}")
         return post
+
+
+def refine_graphic(post, feedback, api_key):
+    """Refine only the graphic concept based on feedback."""
+    try:
+        openai.api_key = api_key
+        
+        system_prompt = """You are an expert graphic designer and visual content creator.
+        Revise only the graphic concept for a LinkedIn post based on the feedback provided.
+        Consider visual elements like style, color scheme, layout, imagery, and overall aesthetic.
+        Keep the graphic concept relevant to the post content but adjust the visual approach based on the feedback.
+        
+        Return only the revised graphic concept description - do not include the post content.
+        """
+        
+        user_prompt = f"""Post content (for context):
+        {post['content']}
+        
+        Current graphic concept:
+        {post['graphic']}
+        
+        Feedback for graphic: Make this more {feedback}
+        
+        Please provide only the revised graphic concept:"""
+        
+        response = openai.chat.completions.create(
+            model="gpt-4-turbo",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.7,
+            max_tokens=500
+        )
+        
+        # Return just the refined graphic concept
+        refined_graphic = response.choices[0].message.content.strip()
+        
+        return refined_graphic
+        
+    except Exception as e:
+        st.error(f"Error refining graphic: {str(e)}")
+        return post['graphic']
     
 
-def article_to_posts(article_text, num_posts, brand_data, api_key):
+def article_to_posts(article_text, website, num_posts, brand_data, api_key):
     """Generate LinkedIn posts based on an article."""
     try:
         openai.api_key = api_key
@@ -265,6 +315,7 @@ def article_to_posts(article_text, num_posts, brand_data, api_key):
         system_prompt = f"""You are an expert content marketer specializing in LinkedIn.
         Based on the article provided, create {num_posts} LinkedIn posts that highlight key insights or quotes from the article.
         Each post should be standalone, engaging, and encourage readers to read the full article.
+        {website}
         Vary the style and approach of each post to appeal to different audience segments.
         
         {brand_context}
@@ -281,7 +332,7 @@ def article_to_posts(article_text, num_posts, brand_data, api_key):
         """
         
         # Truncate article if too long to fit in context
-        max_article_length = 6000
+        max_article_length = 8000
         if len(article_text) > max_article_length:
             article_text = article_text[:max_article_length] + "... [article truncated]"
         
@@ -314,11 +365,12 @@ def article_to_posts(article_text, num_posts, brand_data, api_key):
                 "content": post_content,
                 "graphic": graphic_desc,
                 "selected": True,
-                "feedback": ""
+                "feedback": "",
+                "post_feedback": "",
+                "graphic_feedback": ""
             })
         
         return posts
     except Exception as e:
         st.error(f"Error generating posts from article: {str(e)}")
         return []
-
