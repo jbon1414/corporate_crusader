@@ -1,9 +1,14 @@
 import streamlit as st
+import os
 import pandas as pd
 from utils.supabase_conn import SupaBase
-from utils.openai import generate_social_posts, article_to_posts, refine_post
+from utils.openai import generate_social_posts, article_to_posts, refine_post, refine_graphic
 
 st.set_page_config(page_title="Social Media Content Generator", layout="wide")
+
+current_dir = os.path.dirname(__file__)
+image_path = os.path.join(current_dir, r'The Glenwood Group-02.png')
+st.image(image_path, width=400)
 
 # Initialize session state variables if they don't exist
 if 'generated_posts' not in st.session_state:
@@ -17,11 +22,11 @@ if 'brands' not in st.session_state:
 if 'supabase_client' not in st.session_state:
     st.session_state.supabase_client = None
 
-#Initialize Supabase connection
+# Initialize Supabase connection
 try:
     if not st.session_state.supabase_client:
         st.session_state.supabase_client = SupaBase()
-        #st.sidebar.success("✅ Connected to Supabase")
+        # st.sidebar.success("✅ Connected to Supabase")
 except Exception as e:
     st.sidebar.error(f"❌ Supabase connection failed: {str(e)}")
     st.sidebar.warning("Make sure your .env file contains DATABASE_URL and SUPABASE_API")
@@ -41,7 +46,7 @@ if st.session_state.supabase_client:
 # Main app interface
 st.title("Social Media Content Generator")
 
-tab1, tab2, tab3 = st.tabs(["Brand Management", "Social Calendar Generator", "Article to LinkedIn Posts"])
+tab1, tab2, tab3, tab4 = st.tabs(["Brand Management", "Social Calendar Generator", "Article to LinkedIn Posts", "Previous Saved Posts"])
 
 with tab1:
     st.header("Brand Management")
@@ -173,7 +178,7 @@ with tab2:
                 focus = st.text_input("Specify focus", "")
         
         with col2:
-            posts_per_month = st.number_input("How many posts per month?", min_value=1, max_value=30, value=6)
+            num_posts = st.number_input("How many posts per month?", min_value=1, max_value=30, value=6)
             special_events = st.text_area("Special Events to highlight", placeholder="e.g., National Hot Dog Day (July 21), Franchise Convention")
             api_key = st.text_input("OpenAI API Key", type="password", help="Your API key is required to generate content")
         
@@ -197,7 +202,8 @@ with tab2:
             st.write("Select the posts you want to keep, provide feedback, or refine them.")
             
             for i, post in enumerate(st.session_state.generated_posts):
-                col1, col2, col3, col4 = st.columns([0.1, 0.6, 0.2, 0.1])
+                # Create 5 columns: checkbox, content area, post refinement, graphic refinement, actions
+                col1, col2, col3, col4, col5 = st.columns([0.05, 0.45, 0.15, 0.15, 0.2])
                 
                 with col1:
                     selected = st.checkbox(f"#{post['number']}", value=post['selected'], key=f"select_{i}")
@@ -209,14 +215,39 @@ with tab2:
                     post['graphic'] = st.text_area("Graphic Concept", post['graphic'], height=80, key=f"graphic_{i}")
                 
                 with col3:
-                    feedback = st.text_area("Refine as...", placeholder="e.g., casual, formal, fun", key=f"feedback_{i}", height=100)
-                    st.session_state.generated_posts[i]['feedback'] = feedback
+                    st.markdown("**Refine Post**")
+                    post_feedback = st.text_area("Refine post as...", placeholder="e.g., casual, formal, fun", key=f"post_feedback_{i}", height=70)
+                    st.session_state.generated_posts[i]['post_feedback'] = post_feedback
+                    
+                    if post_feedback:
+                        if st.button("Refine Post", key=f"refine_post_{i}"):
+                            with st.spinner("Refining post..."):
+                                refined_post = refine_post(post, post_feedback, st.session_state.api_key)
+                                st.session_state.generated_posts[i] = refined_post
+                                st.rerun()
                 
                 with col4:
-                    if feedback:
-                        if st.button("Refine", key=f"refine_{i}"):
-                            with st.spinner("Refining post..."):
-                                refined_post = refine_post(post, feedback, st.session_state.api_key)
+                    st.markdown("**Refine Graphic**")
+                    graphic_feedback = st.text_area("Refine graphic as...", placeholder="e.g., minimalist, colorful, corporate", key=f"graphic_feedback_{i}", height=70)
+                    st.session_state.generated_posts[i]['graphic_feedback'] = graphic_feedback
+                    
+                    if graphic_feedback:
+                        if st.button("Refine Graphic", key=f"refine_graphic_{i}"):
+                            with st.spinner("Refining graphic concept..."):
+                                refined_graphic = refine_graphic(post, graphic_feedback, st.session_state.api_key)
+                                st.session_state.generated_posts[i]['graphic'] = refined_graphic
+                                st.rerun()
+                
+                with col5:
+                    st.markdown("**Actions**")
+                    # Keep legacy feedback field for backward compatibility
+                    legacy_feedback = st.text_area("General feedback", placeholder="General refinement", key=f"legacy_feedback_{i}", height=70)
+                    st.session_state.generated_posts[i]['feedback'] = legacy_feedback
+                    
+                    if legacy_feedback:
+                        if st.button("Refine Both", key=f"refine_both_{i}"):
+                            with st.spinner("Refining post and graphic..."):
+                                refined_post = refine_post(post, legacy_feedback, st.session_state.api_key)
                                 st.session_state.generated_posts[i] = refined_post
                                 st.rerun()
                 
@@ -229,6 +260,21 @@ with tab2:
                 if not selected_posts:
                     st.warning("No posts selected for export.")
                 else:
+                    # Save selected posts to Supabase
+                    saved_count = 0
+                    for post in selected_posts:
+                        result = st.session_state.supabase_client.save_posts(
+                            brand_id=selected_brand_id,
+                            post=post['content'],
+                            user_id=None,
+                            graphic_concept=post['graphic'],
+                            type="LinkedIn Posts",
+                            date=post['date']
+                        )
+                        if result:
+                            saved_count += 1
+                    st.success(f"{saved_count} posts saved to Supabase.")
+
                     # Create a DataFrame for export
                     export_data = []
                     for post in selected_posts:
@@ -258,7 +304,8 @@ with tab3:
     
     article_text = st.text_area("Paste your article here", height=300, 
                                placeholder="Paste the full text of your article here...")
-    
+    website = st.text_input("Article URL", placeholder="place article URL here (optional)",)
+
     col1, col2, col3 = st.columns(3)
     
     with col1:
@@ -299,14 +346,15 @@ with tab3:
                     'overall_voice': 'Informative and approachable',
                     'brand_phrases': ''
                 }
-                st.session_state.article_posts = article_to_posts(article_text, num_posts, brand_data_to_use, api_key)
+                st.session_state.article_posts = article_to_posts(article_text, website, num_posts, brand_data_to_use, api_key)
     
     # Display article-based posts
     if 'article_posts' in st.session_state and st.session_state.article_posts:
         st.subheader("Generated LinkedIn Posts from Article")
         
         for i, post in enumerate(st.session_state.article_posts):
-            col1, col2, col3, col4 = st.columns([0.1, 0.6, 0.2, 0.1])
+            # Create 5 columns: checkbox, content area, post refinement, graphic refinement, actions
+            col1, col2, col3, col4, col5 = st.columns([0.05, 0.45, 0.15, 0.15, 0.2])
             
             with col1:
                 selected = st.checkbox(f"#{post['number']}", value=post['selected'], key=f"article_select_{i}")
@@ -317,14 +365,39 @@ with tab3:
                 post['graphic'] = st.text_area("Graphic Concept", post['graphic'], height=80, key=f"article_graphic_{i}")
             
             with col3:
-                feedback = st.text_area("Refine as...", placeholder="e.g., casual, formal, fun", key=f"article_feedback_{i}", height=100)
-                st.session_state.article_posts[i]['feedback'] = feedback
+                st.markdown("**Refine Post**")
+                article_post_feedback = st.text_area("Refine post as...", placeholder="e.g., casual, formal, fun", key=f"article_post_feedback_{i}", height=70)
+                st.session_state.article_posts[i]['post_feedback'] = article_post_feedback
+                
+                if article_post_feedback:
+                    if st.button("Refine Post", key=f"article_refine_post_{i}"):
+                        with st.spinner("Refining post..."):
+                            refined_post = refine_post(post, article_post_feedback, st.session_state.api_key)
+                            st.session_state.article_posts[i] = refined_post
+                            st.rerun()
             
             with col4:
-                if feedback:
-                    if st.button("Refine", key=f"article_refine_{i}"):
-                        with st.spinner("Refining post..."):
-                            refined_post = refine_post(post, feedback, st.session_state.api_key)
+                st.markdown("**Refine Graphic**")
+                article_graphic_feedback = st.text_area("Refine graphic as...", placeholder="e.g., minimalist, colorful, corporate", key=f"article_graphic_feedback_{i}", height=70)
+                st.session_state.article_posts[i]['graphic_feedback'] = article_graphic_feedback
+                
+                if article_graphic_feedback:
+                    if st.button("Refine Graphic", key=f"article_refine_graphic_{i}"):
+                        with st.spinner("Refining graphic concept..."):
+                            refined_graphic = refine_graphic(post, article_graphic_feedback, st.session_state.api_key)
+                            st.session_state.article_posts[i]['graphic'] = refined_graphic
+                            st.rerun()
+            
+            with col5:
+                st.markdown("**Actions**")
+                # Keep legacy feedback field for backward compatibility
+                article_legacy_feedback = st.text_area("General feedback", placeholder="General refinement", key=f"article_legacy_feedback_{i}", height=70)
+                st.session_state.article_posts[i]['feedback'] = article_legacy_feedback
+                
+                if article_legacy_feedback:
+                    if st.button("Refine Both", key=f"article_refine_both_{i}"):
+                        with st.spinner("Refining post and graphic..."):
+                            refined_post = refine_post(post, article_legacy_feedback, st.session_state.api_key)
                             st.session_state.article_posts[i] = refined_post
                             st.rerun()
             
@@ -337,6 +410,21 @@ with tab3:
             if not selected_posts:
                 st.warning("No posts selected for export.")
             else:
+                # Save selected article posts to Supabase
+                saved_count = 0
+                for post in selected_posts:
+                    result = st.session_state.supabase_client.save_posts(
+                        brand_id=selected_article_brand_id,
+                        post=post['content'],
+                        user_id=None,
+                        graphic_concept=post['graphic'],
+                        type="LinkedIn Article Posts",
+                        date='' #TODO: Add date handling if needed
+                    )
+                    if result:
+                        saved_count += 1
+                st.success(f"{saved_count} article posts saved to Supabase.")
+
                 # Create a DataFrame for export
                 export_data = []
                 for post in selected_posts:
@@ -359,6 +447,32 @@ with tab3:
                 # Also display as a table
                 st.subheader("Selected Posts for Export")
                 st.dataframe(df)
+
+with tab4:
+    st.header("Previous Saved Posts")
+    
+    if not st.session_state.supabase_client or not st.session_state.brands:
+        st.warning("Please check your Supabase connection and create at least one brand in the Brand Management tab.")
+    else:
+        brand_options = {brand['name']: brand['id'] for brand in st.session_state.brands}
+        selected_prev_brand_name = st.selectbox("Select Brand to View Posts", options=list(brand_options.keys()), key="prev_brand_select")
+        selected_prev_brand_id = brand_options[selected_prev_brand_name] if selected_prev_brand_name else None
+        
+        if st.button("Load Saved Posts"):
+            if selected_prev_brand_id:
+                with st.spinner("Loading saved posts..."):
+                    posts = st.session_state.supabase_client.get_posts_by_brand(selected_prev_brand_id)
+                    if posts:
+                        st.subheader(f"Saved Posts for {selected_prev_brand_name}")
+                        for post in posts:
+                            with st.expander(f"📅 {post.get('date', 'No Date')} | {post.get('type', 'No Type')}"):
+                                st.markdown(f"**Post Content:**\n\n{post.get('post', '')}")
+                                st.markdown(f"**Graphic Concept:**\n\n{post.get('graphic_concept', '')}")
+                                st.markdown(f"**User ID:** `{post.get('user_id', 'N/A')}`")
+                    else:
+                        st.info("No saved posts found for this brand.")
+            else:
+                st.warning("Please select a brand.")
 
 # Footer
 st.markdown("---")
