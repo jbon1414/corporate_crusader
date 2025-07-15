@@ -191,7 +191,7 @@ with tab2:
                 st.session_state.api_key = api_key
                 with st.spinner("Generating posts..."):
                     st.session_state.generated_posts = generate_social_posts(
-                        selected_brand_data, focus, posts_per_month, 
+                        selected_brand_data, focus, num_posts, 
                         special_events, api_key
                     )
                     st.session_state.selected_posts = st.session_state.generated_posts.copy()
