@@ -2,7 +2,7 @@ import streamlit as st
 import os
 import pandas as pd
 from utils.supabase_conn import SupaBase
-from utils.openai import generate_social_posts, article_to_posts, refine_post, refine_graphic
+from utils.openai import generate_social_posts, article_to_posts, refine_content
 
 st.set_page_config(page_title="Social Media Content Generator", layout="wide")
 
@@ -46,7 +46,7 @@ if st.session_state.supabase_client:
 # Main app interface
 st.title("Social Media Content Generator")
 
-tab1, tab2, tab3, tab4 = st.tabs(["Brand Management", "Social Calendar Generator", "Article to LinkedIn Posts", "Previous Saved Posts"])
+tab2, tab3, tab1, tab4 = st.tabs(["Social Calendar Generator", "Article to LinkedIn Posts","Brand Management", "Previous Saved Posts"])
 
 with tab1:
     st.header("Brand Management")
@@ -70,6 +70,7 @@ with tab1:
             previous_posts = st.text_area("Examples of previous posts", placeholder="Paste a few examples of previous posts here")
             brand_phrases = st.text_area("Brand Phrases", placeholder="e.g., Always fresh, Real ingredients, Made to order")
             website = st.text_input("Website", placeholder="https://www.example.com")
+            linkedin_url = st.text_input("LinkedIn URL", placeholder="https://www.linkedin.com/company/your-company")
             additional_info = st.text_area("Additional Information", placeholder="Any other relevant brand information")
             
             submitted = st.form_submit_button("Create Brand")
@@ -84,6 +85,7 @@ with tab1:
                         "previous_posts": previous_posts,
                         "brand_phrases": brand_phrases,
                         "website": website,
+                        "linkedin_url": linkedin_url,
                         "additional_info": additional_info
                     }
                     
@@ -115,6 +117,7 @@ with tab1:
                             edit_previous_posts = st.text_area("Previous Posts", value=brand['previous_posts'] or '', key=f"edit_previous_posts_{brand['id']}")
                             edit_brand_phrases = st.text_area("Brand Phrases", value=brand['brand_phrases'] or '', key=f"edit_brand_phrases_{brand['id']}")
                             edit_website = st.text_input("Website", value=brand['website'] or '', key=f"edit_website_{brand['id']}")
+                            edit_linkedin_url = st.text_input("LinkedIn URL", value=brand.get('linkedin_url', '') or '', key=f"edit_linkedin_url_{brand['id']}")
                             edit_additional_info = st.text_area("Additional Info", value=brand['additional_info'] or '', key=f"edit_additional_info_{brand['id']}")
                         
                         with col2:
@@ -131,6 +134,7 @@ with tab1:
                                         "previous_posts": edit_previous_posts,
                                         "brand_phrases": edit_brand_phrases,
                                         "website": edit_website,
+                                        "linkedin_url": edit_linkedin_url,
                                         "additional_info": edit_additional_info
                                     }
                                     
@@ -199,11 +203,11 @@ with tab2:
         # Display generated posts
         if st.session_state.generated_posts:
             st.subheader("Generated LinkedIn Posts")
-            st.write("Select the posts you want to keep, provide feedback, or refine them.")
+            st.write("Select the posts you want to keep and provide feedback for refinement.")
             
             for i, post in enumerate(st.session_state.generated_posts):
-                # Create 5 columns: checkbox, content area, post refinement, graphic refinement, actions
-                col1, col2, col3, col4, col5 = st.columns([0.05, 0.45, 0.15, 0.15, 0.2])
+                # Create 4 columns: checkbox, content area, refinement options, actions
+                col1, col2, col3, col4 = st.columns([0.05, 0.5, 0.25, 0.2])
                 
                 with col1:
                     selected = st.checkbox(f"#{post['number']}", value=post['selected'], key=f"select_{i}")
@@ -215,41 +219,38 @@ with tab2:
                     post['graphic'] = st.text_area("Graphic Concept", post['graphic'], height=80, key=f"graphic_{i}")
                 
                 with col3:
-                    st.markdown("**Refine Post**")
-                    post_feedback = st.text_area("Refine post as...", placeholder="e.g., casual, formal, fun", key=f"post_feedback_{i}", height=70)
-                    st.session_state.generated_posts[i]['post_feedback'] = post_feedback
+                    st.markdown("**Refinement Options**")
+                    # Single feedback textbox
+                    feedback = st.text_area("Refine as...", placeholder="e.g., more casual, professional, engaging", key=f"feedback_{i}", height=70)
                     
-                    if post_feedback:
-                        if st.button("Refine Post", key=f"refine_post_{i}"):
-                            with st.spinner("Refining post..."):
-                                refined_post = refine_post(post, post_feedback, st.session_state.api_key)
-                                st.session_state.generated_posts[i] = refined_post
-                                st.rerun()
+                    # Checkboxes for what to refine
+                    refine_post = st.checkbox("Refine Post Text", key=f"refine_post_check_{i}")
+                    refine_graphic = st.checkbox("Refine Graphic", key=f"refine_graphic_check_{i}")
+                    
+                    # Store the feedback and checkbox states in the post object
+                    st.session_state.generated_posts[i]['feedback'] = feedback
+                    st.session_state.generated_posts[i]['refine_post'] = refine_post
+                    st.session_state.generated_posts[i]['refine_graphic'] = refine_graphic
                 
                 with col4:
-                    st.markdown("**Refine Graphic**")
-                    graphic_feedback = st.text_area("Refine graphic as...", placeholder="e.g., minimalist, colorful, corporate", key=f"graphic_feedback_{i}", height=70)
-                    st.session_state.generated_posts[i]['graphic_feedback'] = graphic_feedback
-                    
-                    if graphic_feedback:
-                        if st.button("Refine Graphic", key=f"refine_graphic_{i}"):
-                            with st.spinner("Refining graphic concept..."):
-                                refined_graphic = refine_graphic(post, graphic_feedback, st.session_state.api_key)
-                                st.session_state.generated_posts[i]['graphic'] = refined_graphic
-                                st.rerun()
-                
-                with col5:
                     st.markdown("**Actions**")
-                    # Keep legacy feedback field for backward compatibility
-                    legacy_feedback = st.text_area("General feedback", placeholder="General refinement", key=f"legacy_feedback_{i}", height=70)
-                    st.session_state.generated_posts[i]['feedback'] = legacy_feedback
+                    st.write("") # Empty space for alignment
+                    st.write("") # Empty space for alignment
                     
-                    if legacy_feedback:
-                        if st.button("Refine Both", key=f"refine_both_{i}"):
-                            with st.spinner("Refining post and graphic..."):
-                                refined_post = refine_post(post, legacy_feedback, st.session_state.api_key)
-                                st.session_state.generated_posts[i] = refined_post
+                    if feedback and (refine_post or refine_graphic):
+                        if st.button("Apply Refinement", key=f"refine_{i}"):
+                            with st.spinner("Refining content..."):
+                                refined_result = refine_content(
+                                    post, feedback, st.session_state.api_key, 
+                                    refine_post=refine_post, refine_graphic=refine_graphic
+                                )
+                                st.session_state.generated_posts[i] = refined_result
                                 st.rerun()
+                    else:
+                        if not feedback:
+                            st.info("Enter feedback to refine")
+                        elif not (refine_post or refine_graphic):
+                            st.info("Select what to refine")
                 
                 st.divider()
             
@@ -302,10 +303,27 @@ with tab2:
 with tab3:
     st.header("Article to LinkedIn Posts")
     
-    article_text = st.text_area("Paste your article here", height=300, 
-                               placeholder="Paste the full text of your article here...")
-    website = st.text_input("Article URL", placeholder="place article URL here (optional)",)
+    # Input options section
+    st.subheader("Content Input")
+    st.write("Provide either article text, a website URL, or both:")
+    
+    col_input1, col_input2 = st.columns(2)
+    
+    with col_input1:
+        article_text = st.text_area("Article Text", height=300, 
+                                   placeholder="Paste the full text of your article here...")
+    
+    with col_input2:
+        website_url = st.text_input("Website URL", 
+                                   placeholder="https://example.com/article",
+                                   help="Our system can scrape content from most websites")
+        
+        # Optional: Show URL validation
+        if website_url and not website_url.startswith(('http://', 'https://')):
+            st.warning("⚠️ URL should start with http:// or https://")
 
+    # Configuration section
+    st.subheader("Generation Settings")
     col1, col2, col3 = st.columns(3)
     
     with col1:
@@ -331,14 +349,28 @@ with tab3:
             api_key = st.session_state.api_key
             st.info("Using API key from previous tab")
     
-    if st.button("Generate Posts from Article"):
+    # Generate button with validation
+    if st.button("Generate Posts from Article", type="primary"):
+        # Validation logic
         if not api_key:
             st.error("Please enter your OpenAI API key")
-        elif not article_text:
-            st.error("Please paste your article text")
+        elif not article_text and not website_url:
+            st.error("Please provide either article text or a website URL")
+        elif website_url and not website_url.startswith(('http://', 'https://')):
+            st.error("Please enter a valid URL starting with http:// or https://")
         else:
             st.session_state.api_key = api_key
-            with st.spinner("Generating posts from article..."):
+            
+            # Determine what content to use
+            content_source = ""
+            if article_text and website_url:
+                content_source = "both article text and website URL"
+            elif article_text:
+                content_source = "article text"
+            elif website_url:
+                content_source = "website URL"
+            
+            with st.spinner(f"Generating posts from {content_source}..."):
                 # Use brand data if selected, otherwise use generic brand data
                 brand_data_to_use = selected_article_brand_data if selected_article_brand_data else {
                     'name': 'Generic Brand',
@@ -346,15 +378,29 @@ with tab3:
                     'overall_voice': 'Informative and approachable',
                     'brand_phrases': ''
                 }
-                st.session_state.article_posts = article_to_posts(article_text, website, num_posts, brand_data_to_use, api_key)
+                
+                # Pass both article_text and website_url to the function
+                # The OpenAI function can handle the logic of which to use
+                st.session_state.article_posts = article_to_posts(  
+                    article_text=article_text if article_text else None,
+                    website_url=website_url if website_url else None, 
+                    num_posts=num_posts, 
+                    brand_data=brand_data_to_use, 
+                    api_key=api_key
+                )
+                
+                if st.session_state.article_posts:
+                    st.success(f"Successfully generated {len(st.session_state.article_posts)} posts!")
+                else:
+                    st.error("Failed to generate posts. Please check your inputs and try again.")
     
     # Display article-based posts
     if 'article_posts' in st.session_state and st.session_state.article_posts:
         st.subheader("Generated LinkedIn Posts from Article")
         
         for i, post in enumerate(st.session_state.article_posts):
-            # Create 5 columns: checkbox, content area, post refinement, graphic refinement, actions
-            col1, col2, col3, col4, col5 = st.columns([0.05, 0.45, 0.15, 0.15, 0.2])
+            # Create 4 columns: checkbox, content area, refinement options, actions
+            col1, col2, col3, col4 = st.columns([0.05, 0.5, 0.25, 0.2])
             
             with col1:
                 selected = st.checkbox(f"#{post['number']}", value=post['selected'], key=f"article_select_{i}")
@@ -365,41 +411,38 @@ with tab3:
                 post['graphic'] = st.text_area("Graphic Concept", post['graphic'], height=80, key=f"article_graphic_{i}")
             
             with col3:
-                st.markdown("**Refine Post**")
-                article_post_feedback = st.text_area("Refine post as...", placeholder="e.g., casual, formal, fun", key=f"article_post_feedback_{i}", height=70)
-                st.session_state.article_posts[i]['post_feedback'] = article_post_feedback
+                st.markdown("**Refinement Options**")
+                # Single feedback textbox
+                article_feedback = st.text_area("Refine as...", placeholder="e.g., more casual, professional, engaging", key=f"article_feedback_{i}", height=70)
                 
-                if article_post_feedback:
-                    if st.button("Refine Post", key=f"article_refine_post_{i}"):
-                        with st.spinner("Refining post..."):
-                            refined_post = refine_post(post, article_post_feedback, st.session_state.api_key)
-                            st.session_state.article_posts[i] = refined_post
-                            st.rerun()
+                # Checkboxes for what to refine
+                article_refine_post = st.checkbox("Refine Post Text", key=f"article_refine_post_check_{i}")
+                article_refine_graphic = st.checkbox("Refine Graphic", key=f"article_refine_graphic_check_{i}")
+                
+                # Store the feedback and checkbox states in the post object
+                st.session_state.article_posts[i]['feedback'] = article_feedback
+                st.session_state.article_posts[i]['refine_post'] = article_refine_post
+                st.session_state.article_posts[i]['refine_graphic'] = article_refine_graphic
             
             with col4:
-                st.markdown("**Refine Graphic**")
-                article_graphic_feedback = st.text_area("Refine graphic as...", placeholder="e.g., minimalist, colorful, corporate", key=f"article_graphic_feedback_{i}", height=70)
-                st.session_state.article_posts[i]['graphic_feedback'] = article_graphic_feedback
-                
-                if article_graphic_feedback:
-                    if st.button("Refine Graphic", key=f"article_refine_graphic_{i}"):
-                        with st.spinner("Refining graphic concept..."):
-                            refined_graphic = refine_graphic(post, article_graphic_feedback, st.session_state.api_key)
-                            st.session_state.article_posts[i]['graphic'] = refined_graphic
-                            st.rerun()
-            
-            with col5:
                 st.markdown("**Actions**")
-                # Keep legacy feedback field for backward compatibility
-                article_legacy_feedback = st.text_area("General feedback", placeholder="General refinement", key=f"article_legacy_feedback_{i}", height=70)
-                st.session_state.article_posts[i]['feedback'] = article_legacy_feedback
+                st.write("") # Empty space for alignment
+                st.write("") # Empty space for alignment
                 
-                if article_legacy_feedback:
-                    if st.button("Refine Both", key=f"article_refine_both_{i}"):
-                        with st.spinner("Refining post and graphic..."):
-                            refined_post = refine_post(post, article_legacy_feedback, st.session_state.api_key)
-                            st.session_state.article_posts[i] = refined_post
+                if article_feedback and (article_refine_post or article_refine_graphic):
+                    if st.button("Apply Refinement", key=f"article_refine_{i}"):
+                        with st.spinner("Refining content..."):
+                            refined_result = refine_content(
+                                post, article_feedback, st.session_state.api_key, 
+                                refine_post=article_refine_post, refine_graphic=article_refine_graphic
+                            )
+                            st.session_state.article_posts[i] = refined_result
                             st.rerun()
+                else:
+                    if not article_feedback:
+                        st.info("Enter feedback to refine")
+                    elif not (article_refine_post or article_refine_graphic):
+                        st.info("Select what to refine")
             
             st.divider()
         
