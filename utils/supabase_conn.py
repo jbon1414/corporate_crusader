@@ -17,29 +17,38 @@ class SupaBase:
         key = st.secrets["SUPABASE_SECRET"]#os.environ.get("SUPABASE_SECRET")
         self.supabase = create_client(url, key)
 
-    def get_brands(self) -> List[Dict]:
+    def get_brands(self, user_id: Optional[str] = None) -> List[Dict]:
         """
-        Fetch all brands from the Supabase database.
+        Fetch brands from the Supabase database, optionally filtered by user_id.
+        Args:
+            user_id: Optional user ID to filter brands by
         Returns:
             List of brand dictionaries
         """
         try:
-            response = self.supabase.table("brands").select("*").execute()
+            if user_id:
+                response = self.supabase.table("brands").select("*").eq("user_id", user_id).execute()
+            else:
+                response = self.supabase.table("brands").select("*").execute()
             return response.data
         except Exception as e:
             print(f"Error fetching brands: {str(e)}")
             return []
 
-    def get_brand_by_id(self, brand_id: str) -> Optional[Dict]:
+    def get_brand_by_id(self, brand_id: str, user_id: Optional[str] = None) -> Optional[Dict]:
         """
-        Fetch a specific brand by ID.
+        Fetch a specific brand by ID, optionally filtered by user_id.
         Args:
             brand_id: UUID string of the brand
+            user_id: Optional user ID to ensure brand ownership
         Returns:
             Brand dictionary or None if not found
         """
         try:
-            response = self.supabase.table("brands").select("*").eq("id", brand_id).execute()
+            query = self.supabase.table("brands").select("*").eq("id", brand_id)
+            if user_id:
+                query = query.eq("user_id", user_id)
+            response = query.execute()
             return response.data[0] if response.data else None
         except Exception as e:
             print(f"Error fetching brand by ID {brand_id}: {str(e)}")
@@ -83,16 +92,20 @@ class SupaBase:
             print(f"Error updating brand {brand_id}: {str(e)}")
             return None
 
-    def delete_brand(self, brand_id: str) -> bool:
+    def delete_brand(self, brand_id: str, user_id: Optional[str] = None) -> bool:
         """
         Delete a brand from the database.
         Args:
             brand_id: UUID string of the brand to delete
+            user_id: Optional user ID to ensure brand ownership
         Returns:
             True if successful, False otherwise
         """
         try:
-            response = self.supabase.table("brands").delete().eq("id", brand_id).execute()
+            query = self.supabase.table("brands").delete().eq("id", brand_id)
+            if user_id:
+                query = query.eq("user_id", user_id)
+            response = query.execute()
             return True
         except Exception as e:
             print(f"Error deleting brand {brand_id}: {str(e)}")
@@ -126,21 +139,118 @@ class SupaBase:
             print(f"Error saving post for brand {brand_id}: {str(e)}")
             return None
 
-    def get_posts_by_brand(self, brand_id: str) -> List[Dict]:
+    def get_posts_by_brand(self, brand_id: str, user_id: Optional[str] = None) -> List[Dict]:
         """
         Fetch all posts for a specific brand from the 'posts' table.
         Args:
             brand_id: UUID string of the brand
+            user_id: Optional user ID to ensure access to posts
         Returns:
             List of post dictionaries
         """
         try:
-            response = self.supabase.table("posts").select("*").eq("brand_id", brand_id).execute()
+            query = self.supabase.table("posts").select("*").eq("brand_id", brand_id)
+            if user_id:
+                query = query.eq("user_id", user_id)
+            response = query.execute()
             return response.data
         except Exception as e:
             print(f"Error fetching posts for brand {brand_id}: {str(e)}")
             return []
 
-#test 
-SupaBaseClient = SupaBase()
-print(SupaBaseClient.get_brands())
+    # User management methods for authentication
+    def create_user(self, username: str, email: str, password_hash: str) -> Optional[Dict]:
+        """
+        Create a new user in the database.
+        Args:
+            username: Username for the user
+            email: Email address
+            password_hash: Hashed password
+        Returns:
+            User dictionary or None if failed
+        """
+        try:
+            user_data = {
+                "username": username,
+                "email": email,
+                "password": password_hash
+            }
+            response = self.supabase.table("users").insert(user_data).execute()
+            return response.data[0] if response.data else None
+        except Exception as e:
+            print(f"Error creating user: {str(e)}")
+            return None
+
+    def get_user_by_username_or_email(self, username_or_email: str) -> Optional[Dict]:
+        """
+        Fetch user by username or email.
+        Args:
+            username_or_email: Username or email to search for
+        Returns:
+            User dictionary or None if not found
+        """
+        try:
+            # Try username first
+            response = self.supabase.table("users").select("*").eq("username", username_or_email).execute()
+            if response.data:
+                return response.data[0]
+            
+            # Try email if username search failed
+            response = self.supabase.table("users").select("*").eq("email", username_or_email.lower()).execute()
+            return response.data[0] if response.data else None
+        except Exception as e:
+            print(f"Error fetching user: {str(e)}")
+            return None
+
+    def update_user_password(self, user_id: str, new_password_hash: str) -> bool:
+        """
+        Update user password.
+        Args:
+            user_id: ID of the user
+            new_password_hash: New hashed password
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            response = self.supabase.table("users").update({
+                "password": new_password_hash
+            }).eq("id", user_id).execute()
+            return len(response.data) > 0
+        except Exception as e:
+            print(f"Error updating password: {str(e)}")
+            return False
+
+    def check_username_exists(self, username: str) -> bool:
+        """
+        Check if username already exists.
+        Args:
+            username: Username to check
+        Returns:
+            True if exists, False otherwise
+        """
+        try:
+            response = self.supabase.table("users").select("id").eq("username", username).execute()
+            return len(response.data) > 0
+        except Exception as e:
+            print(f"Error checking username: {str(e)}")
+            return False
+
+    def check_email_exists(self, email: str) -> bool:
+        """
+        Check if email already exists.
+        Args:
+            email: Email to check
+        Returns:
+            True if exists, False otherwise
+        """
+        try:
+            response = self.supabase.table("users").select("id").eq("email", email.lower()).execute()
+            return len(response.data) > 0
+        except Exception as e:
+            print(f"Error checking email: {str(e)}")
+            return False
+
+# Test code - commented out to prevent execution on import
+# if __name__ == "__main__":
+#     SupaBaseClient = SupaBase()
+#     print(SupaBaseClient.get_brands())
