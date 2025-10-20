@@ -1,5 +1,10 @@
 streamlit>=1.28.0
 openai>=1.0.0
 pandas>=1.5.0
-supabase
-python-dotenv
+supabase>=2.0.0
+matplotlib>=3.5.0
+pillow>=9.0.0
+plotly>=5.0.0
+websockets>=11.0.0
+realtime>=1.0.0
+python-dotenv>=1.0.0
